@@ -472,3 +472,45 @@ fn simultaneous_registrations_are_atomic() {
     }
     assert_eq!(f.state()["repos"].as_object().unwrap().len(), 4);
 }
+
+#[test]
+fn a_new_repo_cannot_share_its_name_with_an_explicit_group() {
+    let f = Fixture::new();
+    f.repo("example");
+    for cmd in ["add", "scan"] {
+        f.gita()
+            .args([cmd, "example", "-g", "example"])
+            .assert()
+            .code(1);
+        assert!(!f.config("repos.json").exists());
+    }
+    f.gita()
+        .args([
+            "clone",
+            f.path("example").to_str().unwrap(),
+            "-C",
+            "copy",
+            "-g",
+            "example",
+        ])
+        .assert()
+        .code(1);
+    assert!(!f.path("copy/example").exists());
+}
+
+#[test]
+fn bare_and_linked_worktrees_match_in_both_backends() {
+    let f = Fixture::new();
+    let work = f.repo("work");
+    git(&work, &["commit", "-qm", "base", "--allow-empty"]);
+    git(&work, &["worktree", "add", "-qb", "linked", "../linked"]);
+    git(f.home(), &["clone", "--bare", "work", "mirror.git"]);
+    f.gita()
+        .args(["add", "-b", "mirror.git", "linked"])
+        .assert()
+        .success();
+    f.settings(json!({"info_items":["branch", "commit_msg"]}));
+    fs::write(f.path("linked/new-file"), "example").unwrap();
+    assert_eq!(ll(&f, "git"), ll(&f, "gix"));
+    assert!(ll(&f, "gix").contains("[?∅]"));
+}

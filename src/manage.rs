@@ -179,6 +179,10 @@ pub fn register(
         .get_one::<PathBuf>("group-path")
         .map(|p| abs(p))
         .transpose()?;
+    let names = register_paths(state, &new);
+    if let Some(group) = group {
+        check_group(state, group, true)?;
+    }
     if args.get_flag("dry") {
         for path in new {
             println!("{}", path.display());
@@ -188,7 +192,6 @@ pub fn register(
     if new.is_empty() {
         return Ok((false, missing));
     }
-    let names = register_paths(state, &new);
     if auto {
         let registered: HashMap<_, _> = new
             .iter()

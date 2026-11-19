@@ -184,6 +184,12 @@ pub fn clone_repos(
             dir.join(clone_name(&entry.url)?)
         };
         let key = target::path_key(&destination);
+        if let Some(group) = group
+            && !by_path.contains_key(&key)
+            && manage::available_name(state, &destination, false) == group
+        {
+            bail!("{group} is already in use as the new repository name!");
+        }
         if !dry {
             if let Some(name) = by_path.get(&key) {
                 names.insert(entry.name.clone(), name.clone());
