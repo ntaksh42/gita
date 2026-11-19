@@ -1,0 +1,36 @@
+[package]
+name = "gita"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Manage and run Git commands across multiple repositories"
+
+[[bin]]
+name = "gita"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4.5", features = ["string"] }
+clap_complete = { version = "4.5", features = ["unstable-dynamic"] }
+dirs = "6"
+fs4 = "0.13"
+gix = { version = "0.90", default-features = false, features = ["sha1", "sha256", "status", "revision"] }
+globset = "0.4"
+ignore = "0.4"
+indexmap = { version = "2", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tempfile = "3"
+unicode-width = "0.2"
+which = "8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+enable-ansi-support = "0.2"
+
+[dev-dependencies]
+assert_cmd = "2"
+insta = "1"

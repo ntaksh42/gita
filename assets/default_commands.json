@@ -1,0 +1,78 @@
+{
+  "br": {
+    "cmd": "git branch -vv"
+  },
+  "clean": {
+    "cmd": "git clean -dfx"
+  },
+  "diff": {
+    "cmd": "git diff"
+  },
+  "difftool": {
+    "cmd": "git difftool",
+    "disable_async": true
+  },
+  "fetch": {
+    "cmd": "git fetch",
+    "allow_all": true
+  },
+  "last": {
+    "cmd": "git log -1 HEAD"
+  },
+  "lo": {
+    "cmd": "git log --oneline -7",
+    "allow_all": true
+  },
+  "log": {
+    "cmd": "git log",
+    "disable_async": true
+  },
+  "merge": {
+    "cmd": "git merge @{u}"
+  },
+  "mergetool": {
+    "cmd": "git mergetool",
+    "disable_async": true
+  },
+  "patch": {
+    "cmd": "git format-patch HEAD~"
+  },
+  "pull": {
+    "cmd": "git pull",
+    "allow_all": true
+  },
+  "push": {
+    "cmd": "git push",
+    "allow_all": true
+  },
+  "rebase": {
+    "cmd": "git rebase"
+  },
+  "reflog": {
+    "cmd": "git reflog"
+  },
+  "remote": {
+    "cmd": "git remote -v"
+  },
+  "reset": {
+    "cmd": "git reset"
+  },
+  "show": {
+    "cmd": "git show",
+    "disable_async": true
+  },
+  "stash": {
+    "cmd": "git stash"
+  },
+  "stat": {
+    "cmd": "git diff --stat",
+    "allow_all": true
+  },
+  "st": {
+    "cmd": "git status",
+    "allow_all": true
+  },
+  "tag": {
+    "cmd": "git tag -n"
+  }
+}

@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gita 仕様</title>
+<style>
+:root {
+  --bg: #fbfaf7; --surface: #ffffff; --text: #1f2328; --muted: #5d6470;
+  --border: #e3e0d8; --accent: #b4532a; --accent-soft: #f6e7df;
+  --code-bg: #f2efe8; --warn: #9a6700; --warn-bg: #fff6d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171a; --surface: #1c1f23; --text: #e6e6e3; --muted: #9aa1ab;
+    --border: #2e3238; --accent: #e08a5f; --accent-soft: #3a2a22;
+    --code-bg: #23272d; --warn: #e3b341; --warn-bg: #3a3220;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171a; --surface: #1c1f23; --text: #e6e6e3; --muted: #9aa1ab;
+  --border: #2e3238; --accent: #e08a5f; --accent-soft: #3a2a22;
+  --code-bg: #23272d; --warn: #e3b341; --warn-bg: #3a3220;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.75 "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+}
+.layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+nav.toc {
+  position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+  padding: 32px 16px 32px 24px; border-right: 1px solid var(--border); font-size: 13px;
+}
+nav.toc .brand { font-weight: 700; font-size: 15px; margin-bottom: 12px; }
+nav.toc ol { list-style: none; padding: 0; margin: 0; }
+nav.toc li { margin: 2px 0; }
+nav.toc a { color: var(--muted); text-decoration: none; display: block; padding: 3px 8px; border-radius: 6px; }
+nav.toc a:hover { color: var(--text); background: var(--accent-soft); }
+main { padding: 40px 48px 96px; min-width: 0; }
+header.hero { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 8px; }
+header.hero h1 { font-size: 28px; margin: 0; letter-spacing: .01em; }
+h2 { font-size: 21px; margin: 56px 0 12px; padding-top: 8px; border-top: 2px solid var(--accent); scroll-margin-top: 16px; }
+h3 { font-size: 16.5px; margin: 32px 0 8px; scroll-margin-top: 16px; }
+h4 { font-size: 15px; margin: 20px 0 6px; color: var(--muted); }
+p, li { max-width: 78ch; }
+a { color: var(--accent); }
+code { font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace; font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 12px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; background: var(--surface); }
+th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+.note, .decide { border-left: 4px solid; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 14px; }
+.note { border-color: var(--accent); background: var(--accent-soft); }
+.decide { border-color: var(--warn); background: var(--warn-bg); }
+@media (max-width: 860px) {
+  .layout { display: block; }
+  nav.toc { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding: 16px; }
+  main { padding: 24px 16px 64px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="目次">
+  <div class="brand">gita 仕様</div>
+  <ol>
+    <li><a href="#overview">1. 概要</a></li>
+    <li><a href="#config">2. 設定ファイル</a></li>
+    <li><a href="#cli">3. CLI 全体の規則</a></li>
+    <li><a href="#targets">4. 対象 repo の解決</a></li>
+    <li><a href="#cmd-book">5. 管理系コマンド</a></li>
+    <li><a href="#cmd-ll">6. ll と状態判定</a></li>
+    <li><a href="#cmd-deleg">7. 委譲コマンド</a></li>
+    <li><a href="#cmd-super">8. super / shell</a></li>
+    <li><a href="#cmd-clone">9. freeze / clone</a></li>
+    <li><a href="#exec">10. 実行モデルと並列度</a></li>
+    <li><a href="#rust">11. 実装設計</a></li>
+    <li><a href="#test">12. テスト計画</a></li>
+    <li><a href="#plan">13. 実装順序</a></li>
+    <li><a href="#decide">14. 決定事項</a></li>
+  </ol>
+</nav>
+<main>
+<header class="hero">
+  <h1>gita 仕様</h1>
+</header>
+
+<!-- 1 -->
+<h2 id="overview">1. 概要</h2>
+<p>gita は登録した複数の git リポジトリ（以下 repo）に対して、次の 2 つを行う Rust 製の CLI である。</p>
+<ul>
+  <li><code>gita ll</code> で各 repo のブランチ、変更状態、最新コミットを横並びに表示する。</li>
+  <li>どのディレクトリからでも、選んだ repo 群に git コマンドやシェルコマンドを一括で実行する。複数 repo のときは並列に実行する。</li>
+</ul>
+
+<h3>動作環境</h3>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>要件</th></tr>
+<tr><td>OS</td><td>Windows、macOS、Linux</td></tr>
+<tr><td>git</td><td>2.35 以上（<code>status --show-stash</code> を使うため）。PATH 上にあること。<code>ll</code> は gix で読める repo では git を起動しない。</td></tr>
+<tr><td>バイナリ名</td><td><code>gita</code></td></tr>
+</table></div>
+
+<h3>コマンドの分類</h3>
+<div class="table-wrap"><table>
+<tr><th>分類</th><th>コマンド</th><th>説明</th></tr>
+<tr><td>管理系</td><td><code>add scan rm rename ls ll group context flags color info clear</code></td><td>設定ファイルを読み書きし、情報を表示する。</td></tr>
+<tr><td>委譲系</td><td>設定に定義されたもの（<code>fetch pull st</code> など 22 個 + ユーザー定義）</td><td>定義済みの git コマンドを repo ごとに実行する。</td></tr>
+<tr><td>任意実行</td><td><code>super shell</code></td><td>任意の git コマンド、任意のシェルコマンドを実行する。</td></tr>
+<tr><td>移行</td><td><code>freeze clone</code></td><td>repo 一覧を書き出し、別の環境で clone し直す。</td></tr>
+</table></div>
+
+<!-- 2 -->
+<h2 id="config">2. 設定ファイル</h2>
+<h3>2.1 設定ディレクトリ</h3>
+<p>次の順で最初に当てはまるものを設定ディレクトリとする。環境変数は空文字なら未設定とみなす。</p>
+<div class="table-wrap"><table>
+<tr><th>順</th><th>条件</th><th>設定ディレクトリ</th></tr>
+<tr><td>1</td><td><code>GITA_PROJECT_HOME</code> が設定済み</td><td><code>$GITA_PROJECT_HOME/gita</code></td></tr>
+<tr><td>2</td><td><code>XDG_CONFIG_HOME</code> が設定済み（全 OS）</td><td><code>$XDG_CONFIG_HOME/gita</code></td></tr>
+<tr><td>3</td><td>Windows</td><td><code>%APPDATA%\gita</code>（例 <code>C:\Users\u\AppData\Roaming\gita</code>）</td></tr>
+<tr><td>4</td><td>Linux / macOS</td><td><code>~/.config/gita</code></td></tr>
+</table></div>
+<p>Windows では <code>dirs::config_dir()</code>（Known Folder API の <code>FOLDERID_RoamingAppData</code>）で <code>%APPDATA%</code> を得る。理由は次のとおり。</p>
+<ul>
+  <li>Windows アプリの設定の標準の置き場所であり、ユーザーがエクスプローラーや <code>%APPDATA%</code> で見つけやすい。</li>
+  <li>Roaming のため、ドメイン環境ではプロファイルと一緒に移動する。repo の一覧は利用者に付く設定なので Roaming が合う（キャッシュのようなマシン固有のデータではない）。</li>
+  <li><code>~/.config</code> は Windows では慣習がなく、ホーム直下に隠しでもないフォルダが増える。</li>
+</ul>
+<p>macOS は <code>dirs::config_dir()</code> だと <code>~/Library/Application Support</code> になるが、CLI ツールの慣習に合わせて <code>~/.config</code> を使う。</p>
+
+<h3>2.2 ファイル一覧</h3>
+<p>コマンドが書き換える状態と、利用者が手で編集する設定を別ファイルに分ける。どちらも UTF-8、2 スペース字下げ、末尾改行ありで書く。</p>
+<div class="table-wrap"><table>
+<tr><th>ファイル</th><th>書く主体</th><th>内容</th><th>無いとき</th></tr>
+<tr><td><code>repos.json</code></td><td>gita のコマンド</td><td>登録 repo、グループ、コンテキスト</td><td>すべて空</td></tr>
+<tr><td><code>settings.json</code></td><td>利用者（<code>color set</code> <code>info add</code> なども書く）</td><td>表示設定、ユーザー定義コマンド、並列数</td><td>すべて既定値</td></tr>
+</table></div>
+
+<h3>2.3 repos.json</h3>
+<pre><code>{
+  "version": 1,
+  "repos": {
+    "gita": { "path": "/home/u/src/gita", "type": "", "flags": [] },
+    "dotfiles": {
+      "path": "/home/u/dotfiles.git",
+      "type": "",
+      "flags": ["--git-dir=/home/u/dotfiles.git", "--work-tree=/home/u"]
+    }
+  },
+  "groups": {
+    "src": { "path": "/home/u/src", "repos": ["gita", "dotfiles"] },
+    "work": { "path": null, "repos": ["api", "web"] }
+  },
+  "context": null
+}</code></pre>
+<div class="table-wrap"><table>
+<tr><th>キー</th><th>型</th><th>説明</th></tr>
+<tr><td><code>version</code></td><td>number</td><td>形式のバージョン。今は 1。より大きい値なら「新しい gita で作られた」旨を出して終了コード 1。</td></tr>
+<tr><td><code>repos</code></td><td>object（キー = repo 名）</td><td>登録順を保つ（<code>serde_json</code> の <code>preserve_order</code>）。キーなので名前は重複しない。</td></tr>
+<tr><td><code>repos.*.path</code></td><td>string</td><td>絶対パス。</td></tr>
+<tr><td><code>repos.*.type</code></td><td>string</td><td>予約欄。現在は <code>freeze</code> がそのまま出力するだけ。省略可。</td></tr>
+<tr><td><code>repos.*.flags</code></td><td>string[]</td><td>git のグローバルオプション。<code>git</code> の直後に挿入する。配列なので空白を含む値も 1 要素として扱える。省略可。</td></tr>
+<tr><td><code>groups</code></td><td>object（キー = グループ名）</td><td><code>repos</code> はメンバー名の配列。<code>path</code> は string か null。</td></tr>
+<tr><td><code>context</code></td><td>string か null</td><td>null = なし、<code>"auto"</code> = 自動、それ以外 = グループ名。</td></tr>
+</table></div>
+<ul>
+  <li>読み込み時、存在しない repo を指すグループのメンバーは無視する（ファイルからは消さない）。</li>
+  <li>パスが存在しない repo（外付けディスクの取り外し中など）も設定からは消さない。表示や実行の対象から外すだけにし、<code>ll</code> では <code>(missing)</code> と表示する。</li>
+  <li>メンバーが 0 件になったグループは書き込み時に削除する。</li>
+</ul>
+
+<h3>2.4 settings.json</h3>
+<pre><code>{
+  "jobs": null,
+  "backend": "auto",
+  "colors":  { "no_remote": "white", "in_sync": "green", "diverged": "red",
+               "local_ahead": "purple", "remote_ahead": "yellow" },
+  "info_items": ["branch", "commit_msg", "commit_time"],
+  "layout":  { "branch": 19, "symbols": 5, "branch_name": 27,
+               "commit_msg": 0, "commit_time": 0, "path": 30 },
+  "symbols": { "dirty": "*", "staged": "+", "untracked": "?", "stashed": "$",
+               "local_ahead": "↑", "remote_ahead": "↓", "diverged": "⇕",
+               "in_sync": "", "no_remote": "∅" },
+  "commands": {
+    "fetchcrt": {
+      "cmd": "git rev-parse --abbrev-ref HEAD | xargs git fetch --prune upstream",
+      "allow_all": true,
+      "shell": true,
+      "help": "fetch current branch only"
+    }
+  }
+}</code></pre>
+<ul>
+  <li>すべてのキーは省略でき、省略したキーは既定値になる。<code>colors</code> <code>symbols</code> <code>layout</code> は一部のキーだけ書けば、残りは既定値とマージする。</li>
+  <li><code>layout</code> を省略したときは切り詰めない。上の値は <code>info set-length</code> が書き込む値。</li>
+  <li><code>jobs</code> は並列数の上書き（10.4）。<code>backend</code> は状態の読み取り方法（11.5）。</li>
+  <li>gita がこのファイルを書き換えるとき、知らないキーも残す（<code>#[serde(flatten)]</code> で保持する）。</li>
+  <li>不正な JSON のときは、ファイル名と行・列を出して終了コード 1。黙って既定値に戻さない。</li>
+</ul>
+
+<h3>2.5 commands（委譲コマンドの定義）</h3>
+<div class="table-wrap"><table>
+<tr><th>キー</th><th>型</th><th>既定</th><th>意味</th></tr>
+<tr><td><code>cmd</code></td><td>string か string[]</td><td>必須</td><td>実行するコマンド。文字列なら空白で分割して argv にする（<code>shell</code> が真なら分割しない）。配列ならそのまま argv にする（空白を含む引数を書ける）。</td></tr>
+<tr><td><code>help</code></td><td>string</td><td>なし</td><td>ヘルプ文。</td></tr>
+<tr><td><code>allow_all</code></td><td>bool</td><td>false</td><td>真なら repo 指定を省略でき、省略時は全 repo（またはコンテキスト）が対象。</td></tr>
+<tr><td><code>disable_async</code></td><td>bool</td><td>false</td><td>真なら複数 repo でも逐次実行し、端末入出力を直接つなぐ。</td></tr>
+<tr><td><code>shell</code></td><td>bool</td><td>false</td><td>真なら <code>cmd</code> をシェル経由で実行する。</td></tr>
+</table></div>
+<p>既定の 22 個（7.1）はバイナリに埋め込む。<code>settings.json</code> の <code>commands</code> は同名の既定定義を上書きする。組み込みコマンド（<code>add</code> など）と同名の定義は無視し、警告を出す。</p>
+
+<h3>2.6 git repo の判定</h3>
+<ol>
+  <li>パスが存在しなければ偽。</li>
+  <li><code>&lt;path&gt;/.git</code> が存在すれば真（ディレクトリでもファイルでもよい。worktree と submodule は <code>.git</code> がファイル）。
+    <br><code>exclude_submodule</code> 指定時、<code>.git</code> がファイルで中身に <code>.git/modules</code> を含むなら偽。</li>
+  <li><code>include_bare</code> 指定時のみ、<code>git rev-parse --is-bare-repository</code> を <code>path</code> で実行し、終了コード 0 かつ出力が <code>true</code> なら真。</li>
+  <li>それ以外は偽。</li>
+</ol>
+
+
+<!-- 3 -->
+<h2 id="cli">3. CLI 全体の規則</h2>
+<ul>
+  <li>トップレベルのオプションは <code>-h/--help</code>、<code>-v/--version</code>（<code>gita &lt;version&gt;</code> を出力）、<code>-j/--jobs N</code>。</li>
+  <li>サブコマンドなしで起動したらヘルプを表示する。</li>
+  <li>repo 名、グループ名を取る引数は、実行時に設定から選択肢を作る。選択肢外なら使い方を表示して終了コード 2。</li>
+  <li>委譲系サブコマンドは設定から実行時に生成する。clap では builder API で動的に追加する。</li>
+  <li>グループ名には repo 名、既存グループ名（<code>group add</code> では許可）、予約語 <code>none</code> <code>auto</code> を使えない。違反時はメッセージを出して終了コード 1。</li>
+  <li>パス引数は <code>std::path::absolute</code> で絶対パスにする。シンボリックリンクは解決しない。</li>
+</ul>
+
+<!-- 4 -->
+<h2 id="targets">4. 対象 repo の解決</h2>
+<h3>4.1 コンテキスト</h3>
+<p><code>repos.json</code> の <code>context</code> で、既定の対象グループを決める。</p>
+<ul>
+  <li>null ならコンテキストなし。</li>
+  <li>グループ名ならそのグループ。グループが消えていればコンテキストなしとして扱う。</li>
+  <li><code>"auto"</code> なら、各グループの <code>path</code> のうちカレントディレクトリを含むものを探し、カレントディレクトリからの相対深さが最小のグループを選ぶ（同点なら先に定義されたもの）。<code>path</code> が null のグループは候補にしない。該当なしならコンテキストなし。</li>
+</ul>
+<p>Windows ではパスの比較で大文字小文字を区別しない。</p>
+
+<h3>4.2 引数からの解決</h3>
+<p><code>super</code>、<code>shell</code>、委譲系で共通に使う。</p>
+<ol>
+  <li>引数に <code>--</code> があれば 4.3 の明示モードで解決する。</li>
+  <li>引数を先頭から見て、repo 名またはグループ名である限り名前として取る。最初に名前でない語が出たところで止め、そこから後ろを「残り」とする。</li>
+  <li>名前が 0 個で、コンテキストがあれば、コンテキストのグループを名前とする。</li>
+  <li>名前があれば、repo 名はその repo、グループ名はメンバー全員に展開する（重複は 1 回、順序は出現順）。名前がなければ全 repo。</li>
+  <li><code>quote_mode</code>（<code>-q</code>）のときは、残りがちょうど 1 語でなければ <code>&lt;語&gt; is not a repo or group</code> を出して終了コード 2。</li>
+</ol>
+
+<h3>4.3 repo 名とコマンドの曖昧さの解消</h3>
+<p>repo 名とコマンドが同じ語だと、4.2 の規則では区別できない。例えば repo <code>status</code> があると、<code>gita super status</code> は「repo <code>status</code> を対象にコマンドなし」と解釈される。これに次の 3 つで対処する。</p>
+<div class="table-wrap"><table>
+<tr><th>対策</th><th>内容</th></tr>
+<tr><td><code>--</code> による明示</td><td><code>gita super status -- status</code>、<code>gita super -- status</code>（コンテキストまたは全 repo が対象）。<code>--</code> より前はすべて repo 名かグループ名でなければならず、違えば <code>&lt;語&gt; is not a repo or group</code> で終了コード 2。<code>--</code> より後はすべてコマンドとして扱う。<code>shell</code> でも同じ。</td></tr>
+<tr><td>登録時の警告</td><td><code>add</code>、<code>rename</code>、<code>group add -n</code>、<code>group rename</code> で、名前が git のコマンドまたは alias（<code>git --list-cmds=main,others,alias</code> の結果）と一致したら、<code>--</code> を使うよう案内する警告を stderr に出す。登録は行う。</td></tr>
+<tr><td>取り違えの検出</td><td><code>--</code> なしで残りが空になったとき、最後に名前として取った語が git コマンドとしても有効なら、<code>Missing commands</code> に加えて「<code>&lt;語&gt;</code> を repo 名として扱った。コマンドとして使うなら <code>--</code> を付ける」と案内する。</td></tr>
+</table></div>
+<p>委譲コマンド（<code>gita st ...</code>）は引数がすべて名前なので、この曖昧さは起きない。</p>
+
+<!-- 5 -->
+<h2 id="cmd-book">5. 管理系コマンド</h2>
+
+<h3>5.1 add</h3>
+<pre><code>gita add &lt;path&gt;... [-n] [-g GROUP] [--group-path PATH] [-s] [-r | -a | -b]</code></pre>
+<div class="table-wrap"><table>
+<tr><th>オプション</th><th>動作</th></tr>
+<tr><td><code>-n, --dry-run</code></td><td>見つかった件数とパスを表示し、書き込まない。</td></tr>
+<tr><td><code>-g, --group</code></td><td>追加した repo をグループに入れる。グループがなければ <code>&lt;g&gt; does not exists, creating it.</code> を出して作る。</td></tr>
+<tr><td><code>--group-path</code></td><td>新規作成するグループの path。</td></tr>
+<tr><td><code>-s, --skip-submodule</code></td><td>submodule を除外する。</td></tr>
+<tr><td><code>-r, --recursive</code></td><td>各パス以下の全ディレクトリ（自身を含む）を候補にする。</td></tr>
+<tr><td><code>-a, --auto-group</code></td><td><code>-r</code> と同じく再帰で探し、ディレクトリ構造からグループを自動生成する。</td></tr>
+<tr><td><code>-b, --bare</code></td><td>bare repo も候補にする。</td></tr>
+</table></div>
+<p><code>-r</code> <code>-a</code> <code>-b</code> は互いに排他。再帰探索は並列に行い（<code>ignore</code> クレートの並列 walker）、<code>.git</code> の中には降りない。</p>
+<h4>処理</h4>
+<ol>
+  <li>候補パスのうち git repo（2.6）であり、既に登録済みでないものを新規とする。</li>
+  <li>新規 0 件なら <code>No new repos found!</code>。1 件以上なら <code>Found N new repo(s).</code>。</li>
+  <li>名前を決める。既定は末尾のディレクトリ名。既存 repo 名と重複するか、今回の新規同士で同じ末尾名が 2 個以上あるときは <code>親ディレクトリ名/末尾名</code> にする（区切りは OS によらず <code>/</code>）。</li>
+  <li><code>repos.json</code> に追加する。新規はパスでソートした順に並べる。</li>
+  <li><code>-a</code> のとき 5.1.1 の方法でグループを作り、<code>Created N new group(s).</code> を出す。</li>
+  <li><code>-g</code> のとき、既存グループなら和集合をソートして保存し、なければ新規作成する。<code>Added N repos to the G group</code> を出す。</li>
+</ol>
+<h4>5.1.1 自動グループ（-a）</h4>
+<p>引数のパス <code>P</code>（例 <code>/home/u/src</code>）の配下にある repo <code>/home/u/src/project1/repo1</code> は、<code>P</code> の末尾名と途中のディレクトリを並べた列 <code>(src, project1)</code> を持つ。この列の各接頭辞をグループにする。</p>
+<pre><code>src           -&gt; path /home/u/src           メンバー: 配下の全 repo
+src-project1  -&gt; path /home/u/src/project1  メンバー: project1 配下の repo</code></pre>
+<p>グループ名は接頭辞を <code>-</code> でつなぐ。引数パスの外にある repo はグループを作らない。既存名との衝突の扱いは 14 章。</p>
+
+<h3>5.2 scan</h3>
+<pre><code>gita scan [path]... [-n] [-g GROUP] [--group-path PATH] [-a] [-b] [-s] [-d/--depth N] [-x/--exclude GLOB]...</code></pre>
+<p>指定したパスの下を全探索し、見つかった git repo をすべて登録する。<code>path</code> を省略したときはカレントディレクトリを探す。</p>
+<div class="table-wrap"><table>
+<tr><th>オプション</th><th>動作</th></tr>
+<tr><td><code>-n, --dry-run</code></td><td>見つかった新規 repo のパスを表示し、書き込まない。</td></tr>
+<tr><td><code>-g, --group</code> / <code>--group-path</code></td><td>見つかった repo をグループに入れる。動作は <code>add</code> と同じ。</td></tr>
+<tr><td><code>-a, --auto-group</code></td><td>ディレクトリ構造からグループを自動生成する（5.1.1）。<code>-g</code> と併用できない。</td></tr>
+<tr><td><code>-b, --bare</code></td><td>bare repo も登録する。</td></tr>
+<tr><td><code>-s, --skip-submodule</code></td><td>submodule を登録しない。</td></tr>
+<tr><td><code>-d, --depth N</code></td><td>指定パスから N 階層までしか降りない。既定は無制限。</td></tr>
+<tr><td><code>-x, --exclude GLOB</code></td><td>一致するディレクトリには降りない（例 <code>-x node_modules -x "**/target"</code>）。複数指定できる。</td></tr>
+</table></div>
+<h4>探索の規則</h4>
+<ul>
+  <li><code>ignore</code> クレートの並列 walker で探す。<code>.gitignore</code> などの除外設定は使わない（無視されたディレクトリの中の repo も見つける）。</li>
+  <li>隠しディレクトリにも降りる。<code>.git</code> ディレクトリの中には降りない。</li>
+  <li>repo を見つけてもその中への探索は続け、入れ子の repo も登録する。</li>
+  <li>シンボリックリンク（Windows ではジャンクションも）はたどらない。</li>
+  <li>読み取り権限のないディレクトリは飛ばし、最後に件数を stderr に出す。</li>
+  <li>存在しない <code>path</code> は <code>&lt;path&gt; does not exist</code> を stderr に出して飛ばし、他のパスの探索は続ける。終了コードは 1。</li>
+</ul>
+<h4>処理</h4>
+<ol>
+  <li>探索中、端末が TTY なら stderr に見つけた件数を 1 行で更新表示する。</li>
+  <li>見つかった repo のうち未登録のものを新規とする。<code>Found N new repo(s), M already registered.</code> を出す。</li>
+  <li>名前の決定、登録、グループ作成は <code>add</code> の処理 3〜6 と同じ。</li>
+</ol>
+
+<h3>5.3 rm / rename / ls / clear</h3>
+<div class="table-wrap"><table>
+<tr><th>コマンド</th><th>動作</th></tr>
+<tr><td><code>gita rm &lt;repo&gt;...</code></td><td>登録を外す（ディスク上は消さない）。所属グループからも外し、空になったグループは消える。</td></tr>
+<tr><td><code>gita rename &lt;repo&gt; &lt;new&gt;</code></td><td>repo 名を変える。<code>new</code> が使用中なら <code>&lt;new&gt; is already in use!</code> を出して終了コード 1。所属グループのメンバー名も置き換え、メンバーをソートし直す。登録順の位置は変えない。</td></tr>
+<tr><td><code>gita ls</code></td><td>全 repo 名を空白区切りで 1 行に出す。</td></tr>
+<tr><td><code>gita ls &lt;repo&gt;</code></td><td>その repo の絶対パスを出す（<code>cd `gita ls x`</code> 用）。</td></tr>
+<tr><td><code>gita clear</code></td><td>repo とグループとコンテキストをすべて消す。確認は取らない。</td></tr>
+</table></div>
+
+<h3>5.4 group</h3>
+<div class="table-wrap"><table>
+<tr><th>コマンド</th><th>動作</th></tr>
+<tr><td><code>gita group</code> / <code>group ll</code></td><td>全グループを表示する。グループ名は下線付き（<code>\x1b[4m</code>）で <code>名前: path</code>、続けて各メンバーを <code>  - repo</code>。</td></tr>
+<tr><td><code>gita group ll &lt;g&gt;</code></td><td>そのグループのメンバーを空白区切りで 1 行に出す。</td></tr>
+<tr><td><code>gita group ls</code></td><td>グループ名を空白区切りで出す。</td></tr>
+<tr><td><code>gita group add &lt;repo&gt;... -n &lt;g&gt; [-p PATH]</code></td><td>グループに追加する。既存なら和集合をソートし、<code>-p</code> 指定時のみ path を更新する。なければ作る。</td></tr>
+<tr><td><code>gita group rmrepo &lt;repo&gt;... -n &lt;g&gt;</code></td><td>グループから外す。グループが存在しなければ終了コード 1。</td></tr>
+<tr><td><code>gita group rename &lt;g&gt; &lt;new&gt;</code></td><td>改名する。コンテキストがそのグループならコンテキストも新しい名前にする。</td></tr>
+<tr><td><code>gita group rm &lt;g&gt;...</code></td><td>グループを消す。コンテキストがそのグループならコンテキストを null にする。</td></tr>
+</table></div>
+
+<h3>5.5 context</h3>
+<div class="table-wrap"><table>
+<tr><th>コマンド</th><th>動作</th></tr>
+<tr><td><code>gita context</code></td><td>コンテキストがあれば <code>g: repo1 repo2</code>。auto で該当なしなら <code>auto: none detected!</code>。なければ <code>Context is not set</code>。</td></tr>
+<tr><td><code>gita context &lt;g&gt;</code></td><td><code>context</code> をグループ名にする。</td></tr>
+<tr><td><code>gita context auto</code></td><td><code>context</code> を <code>"auto"</code> にする。</td></tr>
+<tr><td><code>gita context none</code></td><td><code>context</code> を null にする。</td></tr>
+</table></div>
+
+<h3>5.6 flags</h3>
+<div class="table-wrap"><table>
+<tr><th>コマンド</th><th>動作</th></tr>
+<tr><td><code>gita flags</code> / <code>flags ll</code></td><td>flags を持つ repo を <code>repo: --a --b</code> の形で出す。</td></tr>
+<tr><td><code>gita flags set &lt;repo&gt; &lt;flags...&gt;</code></td><td>残りの引数すべてを flags として保存する（<code>-</code> 始まりもオプション扱いしない）。0 個なら flags を消す。</td></tr>
+</table></div>
+<p>flags は委譲系・<code>super</code>・<code>ll</code>・<code>freeze</code> の全 git 呼び出しで <code>git</code> の直後に挿入する。例: <code>gita st dotfiles</code> → <code>git --git-dir=... --work-tree=... status</code>。</p>
+
+<h3>5.7 color</h3>
+<div class="table-wrap"><table>
+<tr><th>コマンド</th><th>動作</th></tr>
+<tr><td><code>gita color</code> / <code>color ll</code></td><td>使える色を見本付きで 9 個ごとに改行して並べ、続けて状況ごとの現在の色を出す。</td></tr>
+<tr><td><code>gita color set &lt;situation&gt; &lt;color&gt;</code></td><td><code>settings.json</code> の <code>colors</code> の該当キーを書き換える。</td></tr>
+<tr><td><code>gita color reset</code></td><td><code>colors</code> キーを削除する。</td></tr>
+</table></div>
+<div class="table-wrap"><table>
+<tr><th>色名</th><th>ANSI</th><th>色名</th><th>ANSI</th></tr>
+<tr><td>black / red / green / yellow</td><td><code>30 31 32 33</code></td><td>b_black … b_white</td><td><code>3x;1</code>（太字）</td></tr>
+<tr><td>blue / purple / cyan / white</td><td><code>34 35 36 37</code></td><td>end / underline</td><td><code>0</code> / <code>4</code></td></tr>
+</table></div>
+<div class="table-wrap"><table>
+<tr><th>状況</th><th>既定色</th><th>既定記号</th><th>意味</th></tr>
+<tr><td><code>no_remote</code></td><td>white</td><td><code>∅</code></td><td>upstream がない</td></tr>
+<tr><td><code>in_sync</code></td><td>green</td><td>（空）</td><td>local と remote が同じコミット</td></tr>
+<tr><td><code>diverged</code></td><td>red</td><td><code>⇕</code></td><td>分岐している</td></tr>
+<tr><td><code>local_ahead</code></td><td>purple</td><td><code>↑</code></td><td>local が進んでいる（push 可）</td></tr>
+<tr><td><code>remote_ahead</code></td><td>yellow</td><td><code>↓</code></td><td>remote が進んでいる（merge 可）</td></tr>
+</table></div>
+
+<h3>5.8 info</h3>
+<div class="table-wrap"><table>
+<tr><th>コマンド</th><th>動作</th></tr>
+<tr><td><code>gita info</code> / <code>info ll</code></td><td><code>In use: a,b,c</code> と、未使用があれば <code>Unused: d,e</code>（ソート済み）。</td></tr>
+<tr><td><code>gita info add &lt;item&gt;</code></td><td>未使用なら <code>info_items</code> の末尾に追加する。</td></tr>
+<tr><td><code>gita info rm &lt;item&gt;</code></td><td>使用中なら外す。</td></tr>
+<tr><td><code>gita info set-length</code></td><td><code>Settings are in &lt;path&gt;</code> を出し、<code>layout</code> を既定値（2.4）で上書きする。</td></tr>
+</table></div>
+<p>項目は <code>branch</code>（ブランチ名 + 状態記号 + 色）、<code>branch_name</code>（ブランチ名のみ）、<code>commit_msg</code>、<code>commit_time</code>、<code>path</code> の 5 つ。</p>
+
+<!-- 6 -->
+<h2 id="cmd-ll">6. ll と状態判定</h2>
+<pre><code>gita ll [group] [-C/--no-colors] [-g]</code></pre>
+<ul>
+  <li><code>group</code> 省略時はコンテキストのグループ。どちらもなければ全 repo。</li>
+  <li><code>-g</code>: グループ指定ありならグループ名の行 <code>g:</code> のあと各行を字下げして出す。指定なしなら全グループを順に同じ形で出す（グループに属さない repo は出ない）。</li>
+  <li>repo は名前でソートして出す。情報収集は全 repo 並列で行い（10.4）、ソート順で先頭から揃った行を順に出力する。全 repo の完了を待たずに表示が始まる。</li>
+</ul>
+<h3>6.1 1 行の組み立て</h3>
+<pre><code>{name を (最長の名前の長さ + 1) 桁に左詰め}{各項目を ' ' で連結}</code></pre>
+<p><code>-g</code> のときは行頭に 3 文字の空白を付ける。</p>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>生成方法</th><th>書式</th></tr>
+<tr><td><code>branch</code></td><td>6.2 と 6.3</td><td><code>{color}{info:&lt;18}{end}</code>。<code>info</code> は <code>{branch:&lt;10} [{dirty}{staged}{stashed}{untracked}{situ}]</code>。<code>-C</code> なら色なしで <code>{info:&lt;18}</code></td></tr>
+<tr><td><code>branch_name</code></td><td>6.2</td><td>そのまま</td></tr>
+<tr><td><code>commit_msg</code></td><td>6.4</td><td>そのまま</td></tr>
+<tr><td><code>commit_time</code></td><td>6.4</td><td><code>(3 days ago)</code></td></tr>
+<tr><td><code>path</code></td><td>設定値</td><td>cyan。<code>-C</code> のときは色なし</td></tr>
+</table></div>
+<p>各項目は <code>layout</code> の幅で切り詰める。幅 <code>w</code> が 0 か未設定なら何もしない。<code>w &lt; 3</code> なら 3 とする。文字数が <code>w</code> を超えたら先頭 <code>w-3</code> 文字 + <code>...</code>、超えなければ <code>w</code> 桁まで右を空白で埋める。<code>symbols</code> は角括弧を含む文字列全体に適用する。</p>
+
+<h3>6.2 ブランチ名</h3>
+<p>6.3 の <code>git status</code> 出力の <code>branch.head</code> から取る。<code>(detached)</code> のときだけ <code>git [flags] describe --tags --exact-match</code> を実行し、成功すればタグ名、失敗すれば空文字にする。</p>
+
+<h3>6.3 状態判定</h3>
+<p>repo の状態は gix で読む（11.5）。git コマンドに切り替えた repo では、次の 1 回の git 呼び出しで取る。判定の規則はどちらのバックエンドでも同じ。</p>
+<pre><code>git [flags] status --porcelain=v2 --branch --show-stash -z --untracked-files=normal</code></pre>
+<div class="table-wrap"><table>
+<tr><th>出力</th><th>判定</th></tr>
+<tr><td><code># branch.head &lt;name&gt;</code></td><td>ブランチ名。</td></tr>
+<tr><td><code># branch.upstream</code> が無い、または <code># branch.ab</code> が無い</td><td><code>no_remote</code>（upstream 未設定、または upstream が消えている）。</td></tr>
+<tr><td><code># branch.ab +A -B</code></td><td>A=0, B=0 → <code>in_sync</code>、A&gt;0, B=0 → <code>local_ahead</code>、A=0, B&gt;0 → <code>remote_ahead</code>、両方 &gt;0 → <code>diverged</code>。</td></tr>
+<tr><td><code># stash N</code></td><td>stashed。</td></tr>
+<tr><td><code>1 XY ...</code> / <code>2 XY ...</code></td><td>X が <code>.</code> 以外 → staged、Y が <code>.</code> 以外 → dirty。</td></tr>
+<tr><td><code>u ...</code>（未マージ）</td><td>dirty と staged の両方。</td></tr>
+<tr><td><code>? path</code></td><td>untracked。</td></tr>
+</table></div>
+<ul>
+  <li>local と remote の関係はコミット数で判定する。内容が同じでもコミットが違えば <code>in_sync</code> にならない。</li>
+  <li>出力は最後まで読まなくても、dirty・staged・untracked がすべて真になった時点で読み捨ててよい（ヘッダ行は先頭に出るため）。</li>
+  <li>git が 2.35 未満で失敗したときは、<code>git --version</code> を確かめて要件を示すメッセージを出す。</li>
+  <li>bare repo では <code>status</code> が失敗するため、記号は空、situ は <code>git [flags] rev-list --left-right --count HEAD...@{u}</code> で判定する。</li>
+  <li>stash の判定は git に任せるため、worktree や flags 指定の repo でも正しく出る。</li>
+</ul>
+
+<h3>6.4 コミット情報</h3>
+<p><code>commit_msg</code> か <code>commit_time</code> を表示するときだけ、次の 1 回で両方を取る。<code>status</code> と同時に並列で起動する。</p>
+<pre><code>git [flags] log -1 --format=%s%x1f%cr</code></pre>
+<p><code>%s</code> は件名、<code>%cr</code> は相対時刻（例 <code>3 days ago</code>）。コミットが無い repo では両方とも空文字。</p>
+<p>git コマンドで読む場合、<code>ll</code> の git 起動回数は repo あたり 1〜2 回（detached HEAD のときだけ 3 回）になる。</p>
+
+<!-- 7 -->
+<h2 id="cmd-deleg">7. 委譲コマンド</h2>
+<pre><code>gita &lt;name&gt; [repo|group]...   # allow_all: true
+gita &lt;name&gt; &lt;repo|group&gt;...   # allow_all: false
+gita &lt;name&gt; ... [-s/--shell]</code></pre>
+<h3>7.1 既定の定義</h3>
+<div class="table-wrap"><table>
+<tr><th>名前</th><th>実行内容</th><th>省略可</th><th>逐次</th></tr>
+<tr><td>br</td><td><code>git branch -vv</code></td><td></td><td></td></tr>
+<tr><td>clean</td><td><code>git clean -dfx</code></td><td></td><td></td></tr>
+<tr><td>diff</td><td><code>git diff</code></td><td></td><td></td></tr>
+<tr><td>difftool</td><td><code>git difftool</code></td><td></td><td>○</td></tr>
+<tr><td>fetch</td><td><code>git fetch</code></td><td>○</td><td></td></tr>
+<tr><td>last</td><td><code>git log -1 HEAD</code></td><td></td><td></td></tr>
+<tr><td>lo</td><td><code>git log --oneline -7</code></td><td>○</td><td></td></tr>
+<tr><td>log</td><td><code>git log</code></td><td></td><td>○</td></tr>
+<tr><td>merge</td><td><code>git merge @{u}</code></td><td></td><td></td></tr>
+<tr><td>mergetool</td><td><code>git mergetool</code></td><td></td><td>○</td></tr>
+<tr><td>patch</td><td><code>git format-patch HEAD~</code></td><td></td><td></td></tr>
+<tr><td>pull</td><td><code>git pull</code></td><td>○</td><td></td></tr>
+<tr><td>push</td><td><code>git push</code></td><td>○</td><td></td></tr>
+<tr><td>rebase</td><td><code>git rebase</code></td><td></td><td></td></tr>
+<tr><td>reflog</td><td><code>git reflog</code></td><td></td><td></td></tr>
+<tr><td>remote</td><td><code>git remote -v</code></td><td></td><td></td></tr>
+<tr><td>reset</td><td><code>git reset</code></td><td></td><td></td></tr>
+<tr><td>show</td><td><code>git show</code></td><td></td><td>○</td></tr>
+<tr><td>stash</td><td><code>git stash</code></td><td></td><td></td></tr>
+<tr><td>stat</td><td><code>git diff --stat</code></td><td>○</td><td></td></tr>
+<tr><td>st</td><td><code>git status</code></td><td>○</td><td></td></tr>
+<tr><td>tag</td><td><code>git tag -n</code></td><td></td><td></td></tr>
+</table></div>
+<h3>7.2 処理</h3>
+<ol>
+  <li>repo 引数を 4.2 で解決する（引数 0 個かつ <code>allow_all</code> なら全 repo またはコンテキスト）。</li>
+  <li>repo ごとに argv を作る。先頭が <code>git</code> で flags があれば、<code>git</code> の直後に挿入する。<code>shell</code> 型では flags を挿入しない。</li>
+  <li>対象が 1 件、または定義の <code>disable_async</code> が真なら逐次モード（10.1）。それ以外は並列モード（10.2）。シェル型も並列モードで動く。</li>
+</ol>
+<p><code>-s/--shell</code> は値を取らないフラグで、指定すると <code>cmd</code> をシェル経由で実行する。委譲コマンドは repo 指定より後ろの追加引数を受け付けない。追加引数を渡したいときは <code>super</code> を使う。</p>
+
+<!-- 8 -->
+<h2 id="cmd-super">8. super / shell</h2>
+<div class="table-wrap"><table>
+<tr><th>コマンド</th><th>動作</th></tr>
+<tr><td><code>gita super [repo|group]... [--] &lt;git-args...&gt; [-q]</code></td><td>4.2 で対象を解決し、残りを <code>git</code> の引数として 7.2 の 2〜3 と同じく実行する。逐次にするかは、残りの先頭語が既定定義のうち <code>disable_async</code> のもの（<code>log</code> <code>show</code> <code>difftool</code> <code>mergetool</code>）に一致するかで決める。</td></tr>
+<tr><td><code>gita shell [repo|group]... [--] &lt;cmd...&gt; [-q]</code></td><td>残りを空白で連結した 1 文字列をシェルで実行する。並列モード（10.2）で実行し、stdout と stderr を合わせて取り込み、各行に <code>repo: </code> を付けて出す。</td></tr>
+</table></div>
+<ul>
+  <li>残りが空なら <code>Missing commands</code> を出して終了コード 2（4.3 の案内を付ける場合あり）。</li>
+  <li><code>-q/--quote-mode</code>: 残りを 1 語（クォートされた文字列）に限定する。例 <code>gita shell -q repo1 "ls | wc -l"</code>。</li>
+  <li><code>-q</code> 以外の <code>-</code> 始まりの語はすべて残りに含める（clap では <code>trailing_var_arg</code> + <code>allow_hyphen_values</code>）。<code>-q</code> は残りの前にだけ置ける。</li>
+  <li>シェルは Unix で <code>sh -c</code>、Windows で <code>cmd /C</code>。</li>
+</ul>
+
+<!-- 9 -->
+<h2 id="cmd-clone">9. freeze / clone</h2>
+<h3>9.1 freeze</h3>
+<pre><code>gita freeze [-g GROUP]</code></pre>
+<p>グループ指定がなければコンテキストを使う。次の JSON を stdout に出す。</p>
+<pre><code>{
+  "version": 1,
+  "repos": [
+    { "name": "gita", "url": "https://github.com/nosarthur/gita.git",
+      "path": "/home/u/src/gita", "type": "", "flags": [], "branch": "master" }
+  ],
+  "groups": {
+    "src": { "path": "/home/u/src", "repos": ["gita"] }
+  }
+}</code></pre>
+<ul>
+  <li><code>url</code> は <code>git remote get-url origin</code>、失敗すれば <code>git remote</code> の先頭の remote の URL。どちらも無ければその repo は出さない。</li>
+  <li>同じ url の repo は最初の 1 件だけ出す。</li>
+  <li><code>branch</code> は 6.2 の方法で取る。repo ごとの取得は並列に行う。</li>
+</ul>
+
+<h3>9.2 clone</h3>
+<pre><code>gita clone &lt;URL|FILE&gt; [-C DIR] [-p] [-n] [-g GROUP | -f]</code></pre>
+<div class="table-wrap"><table>
+<tr><th>形</th><th>動作</th></tr>
+<tr><td><code>gita clone URL [-C DIR] [-g G]</code></td><td><code>DIR</code>（既定はカレント）で <code>git clone URL</code> を実行し、できた <code>DIR/&lt;repo名&gt;</code> を <code>add</code> と同じ処理で登録する。<code>-g</code> があればグループにも入れる。既に登録済みなら <code>URL already in gita.</code>。</td></tr>
+<tr><td><code>gita clone -f FILE [-C DIR] [-p]</code></td><td>freeze の JSON を読み、全 repo を並列に clone する。<code>-p</code> 指定時は記録された path に clone する。clone 直後に、branch が空でない repo だけ同じタスク内で checkout する（clone 全体の完了を待たない）。最後に未登録の repo を登録し、グループを <code>group add</code> と同じ処理で反映する。</td></tr>
+<tr><td><code>-n, --dry-run</code></td><td>実行せず、repo ごとに <code>git clone URL [path]</code> を表示する。</td></tr>
+</table></div>
+<ul>
+  <li>clone 先の repo 名は URL の最後の <code>/</code>（または <code>:</code>）以降から末尾の <code>.git</code> を除いたものとする（git 自身の規則）。</li>
+</ul>
+
+<!-- 10 -->
+<h2 id="exec">10. 実行モデルと並列度</h2>
+<h3>10.1 逐次モード</h3>
+<ul>
+  <li>repo ごとにパスを 1 行出力し、子プロセスを端末に直結（stdin/stdout/stderr 継承）して実行し、終了を待つ。</li>
+  <li>pager やエディタを使うコマンド（<code>log</code> <code>difftool</code> など）はこのモードで動く。</li>
+</ul>
+<h3>10.2 並列モード</h3>
+<ul>
+  <li>子プロセスを並列数（10.4）まで同時に起動する。stdin は null、stdout/stderr はパイプで取り込む。</li>
+  <li>環境変数 <code>GIT_TERMINAL_PROMPT=0</code> を付け、子プロセスを新しいセッション（Unix は <code>setsid</code>、Windows は <code>CREATE_NEW_PROCESS_GROUP</code>）で起動する。認証が必要な repo は入力待ちで止まらず、すぐ失敗する。</li>
+  <li>プロセスが終わった順に、stdout の各行、続けて stderr の各行に <code>repo: </code> を付けて出力する。1 repo の出力は 1 回の書き込みでまとめて出し、他の repo と行が混ざらないようにする。</li>
+  <li>終了コードが 0 以外の repo は、全体の完了後にパスを出してから逐次モード（flags 付きの同じ argv）で再実行する。認証入力が必要な repo はここで入力できる。</li>
+</ul>
+<h3>10.3 終了コード</h3>
+<div class="table-wrap"><table>
+<tr><th>コード</th><th>場面</th></tr>
+<tr><td>0</td><td>正常終了。</td></tr>
+<tr><td>1</td><td>設定ファイルの破損、グループ名不正、名前の重複など。委譲先が失敗したときの扱いは 14 章。</td></tr>
+<tr><td>2</td><td>引数エラー、<code>Missing commands</code>、quote mode や <code>--</code> の違反。</td></tr>
+</table></div>
+
+<h3>10.4 並列度</h3>
+<div class="table-wrap"><table>
+<tr><th>処理</th><th>既定の並列数</th></tr>
+<tr><td><code>ll</code>、<code>freeze</code> の情報収集</td><td>gix で読む repo（11.5）は CPU 数。git コマンドに切り替えた repo は <code>min(repo 数, CPU 数 × 4)</code> で、repo 内の <code>status</code> と <code>log</code> も同時に起動する</td></tr>
+<tr><td>委譲コマンド、<code>super</code>、<code>shell</code>、<code>clone -f</code></td><td>repo 数（全部同時）</td></tr>
+<tr><td><code>scan</code>、<code>add -r/-a</code> の探索</td><td>CPU 数</td></tr>
+</table></div>
+<ul>
+  <li>git コマンドの並列数に上限を設けるのは、<code>git status</code> がディスク読み取りと CPU を両方使い、repo 数ぶん同時に起動すると Windows でプロセス生成とディスクの取り合いが起きて逆に遅くなるため。倍率は 12 章のベンチマークで決め直す。</li>
+  <li>委譲コマンドは主にネットワーク待ちなので上限を設けない。</li>
+  <li>並列数は <code>-j/--jobs N</code>、環境変数 <code>GITA_JOBS</code>、<code>settings.json</code> の <code>jobs</code> の順で上書きできる。<code>-j 1</code> で全処理が直列になる。</li>
+  <li>プロセスの起動と待機は標準ライブラリのスレッドで行う。並列数ぶんのワーカースレッドが共有のキューから repo を取る。</li>
+</ul>
+
+<h3>10.5 Windows</h3>
+<ul>
+  <li>起動時に仮想端末処理（ANSI エスケープ）を有効にする。</li>
+  <li>stdout がパイプでも <code>-C</code> 以外では色を付ける。</li>
+  <li><code>git</code> は PATH から一度だけ解決し、以降は絶対パスで起動する（Windows の PATH 探索を毎回行わない）。</li>
+</ul>
+
+<!-- 11 -->
+<h2 id="rust">11. 実装設計</h2>
+<h3>11.1 クレート構成</h3>
+<pre><code>Cargo.toml          # [[bin]] name = "gita"
+src/
+  main.rs           # 起動、Windows の ANSI 有効化、エラーと終了コード
+  cli.rs            # clap の組み立て（静的部分 + commands からの動的部分）
+  config/
+    mod.rs          # 設定ディレクトリの解決
+    state.rs        # repos.json（Repo, Group, Context）
+    settings.rs     # settings.json（表示設定、commands、jobs）
+  target.rs         # 対象 repo の解決（4 章）
+  git.rs            # git 呼び出しの薄いラッパ、is_git
+  status/
+    mod.rs          # バックエンドの選択と切り替え（11.5）
+    gix.rs          # gix による読み取り
+    cli.rs          # git コマンドと porcelain v2 の解析（6.3）
+  scan.rs           # 並列探索（scan、add -r/-a）
+  render.rs         # ll の整形、Truncate、Color
+  exec.rs           # 逐次・並列実行、ワーカープール
+  commands/         # add.rs, rm.rs, group.rs, ... サブコマンドごと
+assets/default_commands.json
+tests/              # 結合テスト</code></pre>
+
+<h3>11.2 依存クレート</h3>
+<div class="table-wrap"><table>
+<tr><th>用途</th><th>クレート</th><th>理由</th></tr>
+<tr><td>引数解析</td><td><code>clap</code>（derive + builder）</td><td>委譲コマンドを実行時に追加するため builder も使う。</td></tr>
+<tr><td>補完</td><td><code>clap_complete</code></td><td>bash/zsh/fish/PowerShell の補完を生成する。repo 名の補完には dynamic 補完（<code>CompleteEnv</code>）を使う。</td></tr>
+<tr><td>JSON</td><td><code>serde</code> + <code>serde_json</code>（<code>preserve_order</code>）</td><td>設定ファイル。キーの順序を保つ。</td></tr>
+<tr><td>順序付きマップ</td><td><code>indexmap</code></td><td>repo とグループの登録順を保つ。</td></tr>
+<tr><td>設定ディレクトリ</td><td><code>dirs</code></td><td><code>home_dir</code> と Windows の <code>config_dir</code>。</td></tr>
+<tr><td>再帰探索</td><td><code>ignore</code></td><td><code>scan</code> と <code>add -r/-a</code> の並列 walker。</td></tr>
+<tr><td>repo の読み取り</td><td><code>gix</code></td><td><code>ll</code> と <code>freeze</code> の情報をプロセス内で読む（11.5）。</td></tr>
+<tr><td>相対時刻</td><td>自前実装</td><td>git の <code>--date=relative</code> と同じ文言（<code>3 days ago</code> など）を作る。</td></tr>
+<tr><td>並列</td><td>標準ライブラリ（<code>std::thread::scope</code> + <code>std::sync::mpsc</code>）</td><td>子プロセスを待つだけなので async ランタイムは不要。</td></tr>
+<tr><td>端末</td><td><code>enable-ansi-support</code></td><td>Windows の VT 有効化。</td></tr>
+<tr><td>PATH 解決</td><td><code>which</code></td><td>git の絶対パスを一度だけ解決する。</td></tr>
+<tr><td>ファイルロック</td><td><code>fs4</code></td><td>設定の同時書き込みを防ぐ（11.4）。</td></tr>
+<tr><td>エラー</td><td><code>anyhow</code></td><td>CLI なので型付きエラーは最小限にする。</td></tr>
+<tr><td>テスト</td><td><code>assert_cmd</code> <code>predicates</code> <code>tempfile</code> <code>insta</code></td><td>結合テストと出力のスナップショット。</td></tr>
+</table></div>
+
+<h3>11.3 主な型</h3>
+<pre><code>#[derive(Serialize, Deserialize)]
+pub struct State {
+    pub version: u32,
+    #[serde(default)] pub repos: IndexMap&lt;String, Repo&gt;,
+    #[serde(default)] pub groups: IndexMap&lt;String, Group&gt;,
+    #[serde(default)] pub context: Option&lt;String&gt;,   // None / "auto" / group
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Repo {
+    pub path: PathBuf,
+    #[serde(default, rename = "type")] pub kind: String,
+    #[serde(default)] pub flags: Vec&lt;String&gt;,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Group { pub path: Option&lt;PathBuf&gt;, pub repos: Vec&lt;String&gt; }
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CmdSpec { Line(String), Argv(Vec&lt;String&gt;) }
+
+#[derive(Serialize, Deserialize)]
+pub struct CmdDef {
+    pub cmd: CmdSpec,
+    pub help: Option&lt;String&gt;,
+    #[serde(default)] pub allow_all: bool,
+    #[serde(default)] pub disable_async: bool,
+    #[serde(default)] pub shell: bool,
+}
+
+pub enum Situation { NoRemote, InSync, Diverged, LocalAhead, RemoteAhead }
+
+pub struct RepoStatus {
+    pub branch: String,
+    pub dirty: bool, pub staged: bool, pub untracked: bool, pub stashed: bool,
+    pub situ: Situation,
+}</code></pre>
+
+<h3>11.4 設定の書き込み</h3>
+<ul>
+  <li>同じディレクトリの一時ファイルに書いてから rename で置き換える。途中で中断しても設定が半端に残らない。</li>
+  <li>読み込みから書き込みまでの間、設定ディレクトリの <code>.lock</code> に排他ロックを取る。2 つの gita が同時に <code>add</code> しても片方の変更が消えない。</li>
+  <li>書き込み前に設定ディレクトリを作る。</li>
+</ul>
+
+<h3>11.5 状態の読み取り（gix と git コマンドの切り替え）</h3>
+<p><code>ll</code> と <code>freeze</code> が読む情報は、まず <code>gix</code>（gitoxide。Rust だけで書かれた git の実装）でプロセス内から読み、うまくいかない repo だけ git コマンド（6.3、6.4）に切り替える。委譲コマンド、<code>super</code>、<code>shell</code>、<code>clone</code> は常に git コマンドで実行する。</p>
+<h4>gix で読む情報</h4>
+<div class="table-wrap"><table>
+<tr><th>情報</th><th>git コマンドでの対応</th></tr>
+<tr><td>ブランチ名、detached 時のタグ名</td><td><code>branch.head</code>、<code>describe --tags --exact-match</code></td></tr>
+<tr><td>dirty、staged、untracked</td><td><code>status</code> の各エントリ</td></tr>
+<tr><td>stash の有無</td><td><code>refs/stash</code> の存在</td></tr>
+<tr><td>upstream との ahead/behind</td><td><code>branch.ab</code></td></tr>
+<tr><td>最新コミットの件名と相対時刻</td><td><code>log -1 --format=%s%x1f%cr</code></td></tr>
+<tr><td>remote の URL（freeze）</td><td><code>remote get-url origin</code></td></tr>
+</table></div>
+<h4>git コマンドに切り替える条件</h4>
+<p>repo ごとに判定し、次のどれかに当たればその repo だけ git コマンドで読み直す。</p>
+<ol>
+  <li>repo に <code>flags</code> が設定されている（任意の git オプションの意味を gix で再現できないため）。</li>
+  <li>gix で repo を開けない、または読み取りの途中でエラーになった。</li>
+  <li>repo が gix の未対応機能を使っている。対象の一覧（index の拡張、<code>extensions.*</code> の設定、sparse checkout など）は実装時に gix の対応状況を調べてコードに持つ。</li>
+</ol>
+<ul>
+  <li>切り替えは黙って行う。<code>GITA_DEBUG=1</code> のときだけ、repo 名と理由を stderr に出す。</li>
+  <li>一部の情報だけ git コマンドで補うことはしない。1 つの repo の情報は必ずどちらか一方のバックエンドで揃える（判定の食い違いを避ける）。</li>
+  <li><code>settings.json</code> の <code>backend</code>（<code>"auto"</code> <code>"gix"</code> <code>"git"</code>、既定 <code>"auto"</code>）と環境変数 <code>GITA_BACKEND</code> で固定できる。<code>"gix"</code> 固定のときは切り替えず、読めない repo はエラー表示にする。</li>
+</ul>
+<div class="note">gix の status 機能の対応範囲と API は、バージョンによって変わる。実装開始時に最新の gix で上の 6 項目が読めることを確かめ、読めない項目があればその項目を表示するときは常に git コマンドを使う。</div>
+
+<!-- 12 -->
+<h2 id="test">12. テスト計画</h2>
+<div class="table-wrap"><table>
+<tr><th>層</th><th>対象</th><th>方法</th></tr>
+<tr><td>単体</td><td>JSON の読み書き、名前生成、自動グループ、Truncate、引数解決（<code>--</code> を含む）、コンテキスト解決、porcelain v2 の解析</td><td>porcelain の解析は固定文字列の入力で全分岐を通す。</td></tr>
+<tr><td>scan</td><td>探索規則（入れ子、隠しディレクトリ、<code>--depth</code>、<code>--exclude</code>、シンボリックリンク、権限なし）</td><td>tempdir にディレクトリ木と repo を組み立てて実行する。</td></tr>
+<tr><td>バックエンド比較</td><td>gix と git コマンドの判定一致</td><td>状態判定のテスト用 repo すべてで <code>backend</code> を <code>gix</code> と <code>git</code> に固定して <code>ll -C</code> を実行し、出力が一致することを確かめる。切り替え条件 1〜3 の repo で <code>auto</code> が git コマンドに切り替わることも確かめる。</td></tr>
+<tr><td>結合</td><td>各サブコマンド</td><td><code>GITA_PROJECT_HOME</code> を tempdir に向け、tempdir に git repo を作って <code>assert_cmd</code> で実行する。出力は <code>insta</code> のスナップショットで比較する。</td></tr>
+<tr><td>状態判定</td><td>6.3 の 5 状況 + 4 記号、bare、worktree、flags 指定</td><td>bare repo を remote にした clone を作り、コミットや stash で各状態を再現する。</td></tr>
+<tr><td>速度</td><td><code>ll</code>、<code>fetch</code>（ローカル remote）</td><td>repo 10 / 100 / 500 個を作り、<code>hyperfine</code> で <code>backend</code> ごとに計測する。並列上限の倍率もここで決める。</td></tr>
+<tr><td>OS</td><td>Linux / macOS / Windows</td><td>GitHub Actions の matrix。Windows では <code>%APPDATA%</code> の解決、シェル実行、ANSI 出力を重点的に見る。</td></tr>
+</table></div>
+
+<!-- 13 -->
+<h2 id="plan">13. 実装順序</h2>
+<ol>
+  <li>設定ディレクトリの解決、<code>repos.json</code> <code>settings.json</code> の読み書き、ロックと単体テスト。</li>
+  <li><code>add</code>（-r/-a/-b/-s/-g/-n）、<code>scan</code>、<code>rm</code>、<code>rename</code>、<code>ls</code>、<code>clear</code>。</li>
+  <li><code>group</code>、<code>context</code>、<code>flags</code>。</li>
+  <li>状態判定（git コマンド版）と <code>ll</code>、<code>color</code>、<code>info</code>。ここで速度計測を作る。</li>
+  <li>gix バックエンドと切り替え処理、バックエンド比較テスト。</li>
+  <li>実行エンジン（逐次・並列）と委譲コマンド、<code>super</code>、<code>shell</code>、<code>--</code> 区切り。</li>
+  <li><code>freeze</code>、<code>clone</code>。</li>
+  <li>補完スクリプト、Windows 対応の確認、リリース（<code>cargo install</code>、GitHub Releases のバイナリ）。</li>
+</ol>
+
+<!-- 14 -->
+<h2 id="decide">14. 決定事項</h2>
+<ol>
+  <li>逐次実行または再実行後に 1 件でも失敗していれば、終了コード 1 を返す。</li>
+  <li>repo 名や各項目の表示幅を <code>unicode-width</code> で測り、端末上の桁数で揃える。</li>
+  <li>自動グループ名が既存のグループ名と重なり、パスも一致するときはメンバーを追加する。パスが異なる場合や repo 名と重なる場合は、警告を出してそのグループへの追加を飛ばす。</li>
+  <li><code>add -r/-a</code> と <code>scan</code> のどちらでも再帰探索できる。</li>
+  <li><code>scan</code> で見つからなかった repo は登録に残す。登録を外すには <code>rm</code> を使う。</li>
+</ol>
+</main>
+</div>
+</body>
+</html>
