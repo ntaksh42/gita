@@ -463,3 +463,19 @@ pub fn settings_command(
     }
     config::save(&path, &data)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_use_enough_ancestors_to_resolve_a_collision() {
+        let mut state = State::default();
+        let path = Path::new("root/team/app");
+        assert_eq!(available_name(&state, path, false), "app");
+        assert_eq!(available_name(&state, path, true), "team/app");
+        state.groups.insert("app".into(), Group::default());
+        state.repos.insert("team/app".into(), Repo::default());
+        assert_eq!(available_name(&state, path, false), "root/team/app");
+    }
+}

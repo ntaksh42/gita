@@ -499,6 +499,39 @@ fn a_new_repo_cannot_share_its_name_with_an_explicit_group() {
 }
 
 #[test]
+fn automatic_groups_merge_only_matching_paths() {
+    let f = Fixture::new();
+    f.repo("one/src/api");
+    f.gita().args(["scan", "-a", "one/src"]).assert().success();
+    f.repo("one/src/web");
+    f.gita().args(["scan", "-a", "one/src"]).assert().success();
+    f.repo("two/src/other");
+    f.gita().args(["scan", "-a", "two/src"]).assert().success();
+    assert_eq!(f.state()["groups"]["src"]["repos"], json!(["api", "web"]));
+    assert!(f.state()["repos"]["other"].is_object());
+}
+
+#[cfg(unix)]
+#[test]
+fn scan_reports_unreadable_directories_and_keeps_accessible_repositories() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    f.repo("root/open");
+    f.repo("root/locked/invisible");
+    let locked = f.path("root/locked");
+    let original = fs::metadata(&locked).unwrap().permissions();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0)).unwrap();
+    let unreadable = fs::read_dir(&locked).is_err();
+    let out = f.gita().args(["scan", "root"]).output().unwrap();
+    fs::set_permissions(&locked, original).unwrap();
+    assert!(out.status.success());
+    if unreadable {
+        assert_eq!(output(f.gita().arg("ls")), "open\n");
+        assert!(String::from_utf8_lossy(&out.stderr).contains("unreadable"));
+    }
+}
+
+#[test]
 fn bare_and_linked_worktrees_match_in_both_backends() {
     let f = Fixture::new();
     let work = f.repo("work");
