@@ -40,6 +40,7 @@ pub const BUILTINS: &[&str] = &[
     "add",
     "scan",
     "rm",
+    "doctor",
     "rename",
     "ls",
     "ll",
@@ -93,6 +94,16 @@ pub fn build(state: &State, delegates: &IndexMap<String, CmdDef>) -> Command {
                 .arg(opt("exclude", 'x', "exclude").action(ArgAction::Append)),
         )
         .subcommand(cmd("rm", "Unregister repositories").arg(required(many(repos()))))
+        .subcommand(
+            cmd(
+                "doctor",
+                "Unregister repositories whose paths no longer exist",
+            )
+            .arg(
+                flag("dry", 'n', "dry-run")
+                    .help("List missing registrations without removing them"),
+            ),
+        )
         .subcommand(
             cmd("rename", "Rename a repository")
                 .arg(required(repos()))

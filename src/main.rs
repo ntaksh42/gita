@@ -44,6 +44,7 @@ fn delegates(settings: &Settings) -> Result<IndexMap<String, CmdDef>> {
 
 fn mutates(name: &str, args: &ArgMatches) -> bool {
     match name {
+        "doctor" => !args.get_flag("dry"),
         "rm" | "rename" | "clear" => true,
         "add" | "scan" | "clone" => !args.get_flag("dry"),
         "context" => args.contains_id("group"),

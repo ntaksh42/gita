@@ -42,10 +42,11 @@ pub fn is_repo(path: &Path, bare: bool, skip_submodule: bool) -> bool {
     }
     let dotgit = path.join(".git");
     if dotgit.exists() {
-        return !(skip_submodule
-            && dotgit.is_file()
-            && std::fs::read_to_string(dotgit)
-                .is_ok_and(|s| s.replace('\\', "/").contains(".git/modules/")));
+        return gix::discover::is_git(&dotgit).is_ok()
+            && !(skip_submodule
+                && dotgit.is_file()
+                && std::fs::read_to_string(dotgit)
+                    .is_ok_and(|s| s.replace('\\', "/").contains(".git/modules/")));
     }
     bare && path.join("HEAD").is_file()
         && query(

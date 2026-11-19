@@ -90,6 +90,37 @@ fn output(cmd: &mut Command) -> String {
 }
 
 #[test]
+fn doctor_previews_then_removes_missing_registrations_globally() {
+    let f = Fixture::new();
+    f.repo("present");
+    f.repo("gone");
+    f.add(&["present", "gone"]);
+    f.gita()
+        .args(["group", "add", "gone", "-n", "empty"])
+        .assert()
+        .success();
+    f.gita()
+        .args(["group", "add", "gone", "present", "-n", "mixed"])
+        .assert()
+        .success();
+    f.gita().args(["context", "empty"]).assert().success();
+    fs::rename(f.path("gone"), f.path("moved")).unwrap();
+    let before = fs::read(f.config("repos.json")).unwrap();
+    assert!(output(f.gita().args(["doctor", "--dry-run"])).contains("Missing: gone"));
+    assert_eq!(fs::read(f.config("repos.json")).unwrap(), before);
+    f.gita().arg("doctor").assert().success();
+    let state = f.state();
+    assert!(state["repos"]["gone"].is_null() && state["repos"]["present"].is_object());
+    assert!(state["groups"]["empty"].is_null() && state["context"].is_null());
+    assert_eq!(state["groups"]["mixed"]["repos"], json!(["present"]));
+    assert!(f.path("moved/.git").exists());
+    assert_eq!(
+        output(f.gita().arg("doctor")),
+        "No missing repository paths.\n"
+    );
+}
+
+#[test]
 fn management_preserves_order_groups_and_configuration() {
     let f = Fixture::new();
     f.repo("src/two/app");
@@ -141,6 +172,17 @@ fn management_preserves_order_groups_and_configuration() {
 }
 
 #[test]
+fn scan_ignores_invalid_git_markers_and_registers_nested_repositories() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.path("root/.git")).unwrap();
+    f.repo("root/valid");
+    fs::create_dir_all(f.path("root/valid/broken")).unwrap();
+    fs::write(f.path("root/valid/broken/.git"), "gitdir: missing\n").unwrap();
+    f.gita().args(["scan", "root"]).assert().success();
+    assert_eq!(output(f.gita().arg("ls")), "valid\n");
+}
+
+#[test]
 fn scan_filters_depth_patterns_git_metadata_and_links() {
     let f = Fixture::new();
     f.repo("root/outer");
@@ -174,6 +216,7 @@ fn scan_filters_depth_patterns_git_metadata_and_links() {
         .args(["scan", "root", "does-not-exist", "-d", "1", "-x", "skip"])
         .assert()
         .code(1);
+    assert!(f.state()["repos"]["does-not-exist"].is_null());
     assert_eq!(output(f.gita().arg("ls")), ".hidden outer\n");
     f.gita()
         .args(["scan", "root", "-x", "skip", "-x", "**/target"])
@@ -522,7 +565,11 @@ fn scan_reports_unreadable_directories_and_keeps_accessible_repositories() {
     let original = fs::metadata(&locked).unwrap().permissions();
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
     let unreadable = fs::read_dir(&locked).is_err();
-    let out = f.gita().args(["scan", "root"]).output().unwrap();
+    let out = f
+        .gita()
+        .args(["scan", "root", "root/locked/invisible"])
+        .output()
+        .unwrap();
     fs::set_permissions(&locked, original).unwrap();
     assert!(out.status.success());
     if unreadable {

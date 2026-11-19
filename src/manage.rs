@@ -2,7 +2,7 @@ use crate::{
     config::{self, Group, INFO, Repo, Settings, State},
     git, render, scan, target,
 };
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::ArgMatches;
 use indexmap::IndexSet;
 use serde_json::{Value, json};
@@ -249,6 +249,43 @@ fn replace_key<T>(map: &mut indexmap::IndexMap<String, T>, old: &str, new: &str)
     map.shift_insert(index, new.to_owned(), value);
 }
 
+fn unregister(state: &mut State, names: &[&str]) {
+    for name in names {
+        state.repos.shift_remove(*name);
+    }
+    for group in state.groups.values_mut() {
+        group.repos.retain(|n| !names.contains(&n.as_str()));
+    }
+}
+
+fn doctor(state: &mut State, dry: bool) -> Result<bool> {
+    let mut missing = Vec::new();
+    for (name, repo) in &state.repos {
+        if !repo
+            .path
+            .try_exists()
+            .with_context(|| format!("Cannot inspect {name}: {}", repo.path.display()))?
+        {
+            missing.push(name.clone());
+        }
+    }
+    if missing.is_empty() {
+        println!("No missing repository paths.");
+        return Ok(false);
+    }
+    for name in &missing {
+        println!("Missing: {name} ({})", state.repos[name].path.display());
+    }
+    if dry {
+        return Ok(false);
+    }
+    unregister(
+        state,
+        &missing.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+    Ok(true)
+}
+
 pub fn state_command(state: &mut State, name: &str, args: &ArgMatches, cwd: &Path) -> Result<bool> {
     match name {
         "ls" => {
@@ -272,15 +309,10 @@ pub fn state_command(state: &mut State, name: &str, args: &ArgMatches, cwd: &Pat
             Ok(true)
         }
         "rm" => {
-            let names = words(args, "repo");
-            for name in &names {
-                state.repos.shift_remove(*name);
-            }
-            for group in state.groups.values_mut() {
-                group.repos.retain(|n| !names.contains(&n.as_str()));
-            }
+            unregister(state, &words(args, "repo"));
             Ok(true)
         }
+        "doctor" => doctor(state, args.get_flag("dry")),
         "rename" => {
             let old = word(args, "repo").unwrap();
             let new = word(args, "new").unwrap();

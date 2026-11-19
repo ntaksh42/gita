@@ -217,7 +217,7 @@ th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
 <h3>2.6 git repo の判定</h3>
 <ol>
   <li>パスが存在しなければ偽。</li>
-  <li><code>&lt;path&gt;/.git</code> が存在すれば真（ディレクトリでもファイルでもよい。worktree と submodule は <code>.git</code> がファイル）。
+  <li><code>&lt;path&gt;/.git</code> が有効な Git ディレクトリなら真。<code>.git</code> がファイルの場合は、ファイルが指す Git ディレクトリを検証する。
     <br><code>exclude_submodule</code> 指定時、<code>.git</code> がファイルで中身に <code>.git/modules</code> を含むなら偽。</li>
   <li><code>include_bare</code> 指定時のみ、<code>git rev-parse --is-bare-repository</code> を <code>path</code> で実行し、終了コード 0 かつ出力が <code>true</code> なら真。</li>
   <li>それ以外は偽。</li>

@@ -45,10 +45,17 @@ pub fn discover(
     let result = Mutex::new(Vec::new());
     let mut missing = false;
     for root in roots {
-        if !root.exists() {
-            eprintln!("{} does not exist", root.display());
-            missing = true;
-            continue;
+        match root.try_exists() {
+            Ok(true) => {}
+            Ok(false) => {
+                eprintln!("{} does not exist", root.display());
+                missing = true;
+                continue;
+            }
+            Err(_) => {
+                errors.fetch_add(1, Ordering::Relaxed);
+                continue;
+            }
         }
         if is_link(root) {
             continue;
