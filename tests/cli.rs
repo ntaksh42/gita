@@ -520,7 +520,7 @@ fn scan_reports_unreadable_directories_and_keeps_accessible_repositories() {
     f.repo("root/locked/invisible");
     let locked = f.path("root/locked");
     let original = fs::metadata(&locked).unwrap().permissions();
-    fs::set_permissions(&locked, fs::Permissions::from_mode(0)).unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
     let unreadable = fs::read_dir(&locked).is_err();
     let out = f.gita().args(["scan", "root"]).output().unwrap();
     fs::set_permissions(&locked, original).unwrap();
